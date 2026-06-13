@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, CreditCard, PiggyBank, MessageSquare } from 'lucide-react';
+import { Calendar, CreditCard, PiggyBank, MessageSquare, Shield } from 'lucide-react';
 import ItineraryTab from '@/components/ItineraryTab';
 import ExpensesTab from '@/components/ExpensesTab';
 import PaymentsTab from '@/components/PaymentsTab';
@@ -15,6 +15,8 @@ const DEFAULT_MEMBERS = [
 export default function Home() {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [tripName, setTripName] = useState("Susegad Goa");
   const [members, setMembers] = useState<string[]>(DEFAULT_MEMBERS);
   const [activeTab, setActiveTab] = useState<'itinerary' | 'expenses' | 'payments' | 'chat'>('itinerary');
   const [isProfileSwitcherOpen, setIsProfileSwitcherOpen] = useState(false);
@@ -35,16 +37,18 @@ export default function Home() {
 
         setCurrentUserEmail(user.email || '');
 
-        // Try to get profile
+        // Try to get profile details
         let displayName = '';
+        let userIsAdmin = false;
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('display_name')
+          .select('display_name, is_admin')
           .eq('id', user.id)
           .single();
 
-        if (profile && profile.display_name) {
-          displayName = profile.display_name;
+        if (profile) {
+          if (profile.display_name) displayName = profile.display_name;
+          userIsAdmin = profile.is_admin || false;
         } else {
           // Fallback to metadata
           displayName = user.user_metadata?.display_name || user.email?.split('@')[0] || 'User';
@@ -62,15 +66,22 @@ export default function Home() {
         }
 
         setCurrentUser(displayName);
+        setIsAdmin(userIsAdmin);
 
         // Fetch dynamic group members list
         const { data: profiles, error: profilesError } = await supabase
           .from('profiles')
-          .select('display_name')
+          .select('display_name, is_admin')
           .order('display_name', { ascending: true });
 
         if (profiles && profiles.length > 0) {
           setMembers(profiles.map((p: any) => p.display_name));
+          
+          // Self-heal promo validation: if there are no admin accounts in profiles, make current user admin
+          const systemHasAdmins = profiles.some((p: any) => p.is_admin === true);
+          if (!systemHasAdmins) {
+            setIsAdmin(true);
+          }
         } else {
           // If no profiles loaded, use default fallback including current user
           const fallbackList = [...DEFAULT_MEMBERS];
@@ -78,6 +89,17 @@ export default function Home() {
             fallbackList.push(displayName);
           }
           setMembers(fallbackList);
+        }
+
+        // Fetch dynamic trip settings name
+        const { data: settingsData } = await supabase
+          .from('trip_settings')
+          .select('value')
+          .eq('key', 'trip_info')
+          .single();
+
+        if (settingsData && settingsData.value?.tripName) {
+          setTripName(settingsData.value.tripName);
         }
       } catch (err) {
         console.error('Session initialization error:', err);
@@ -123,7 +145,7 @@ export default function Home() {
       <header style={styles.header}>
         <div style={styles.headerTitleContainer}>
           <span style={styles.palmIcon}>🌴</span>
-          <h1 style={styles.logoText}>Susegad Goa</h1>
+          <h1 style={styles.logoText}>{tripName}</h1>
           <span className="sync-indicator" title="Connected to Supabase" />
         </div>
         <button 
@@ -217,17 +239,34 @@ export default function Home() {
               <div style={styles.statusBadgeRow}>
                 <span className="sync-indicator" style={{ marginLeft: 0, marginRight: '6px' }} />
                 <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600' }}>
-                  Connected to Supabase Auth
+                  {isAdmin ? 'System Administrator' : 'Connected to Supabase Auth'}
                 </span>
               </div>
             </div>
+
+            {isAdmin && (
+              <button 
+                onClick={() => window.location.href = '/admin'}
+                className="btn-secondary"
+                style={{
+                  marginTop: '12px',
+                  height: '46px',
+                  borderColor: 'var(--primary-teal)',
+                  color: 'var(--primary-teal)',
+                  fontWeight: '700',
+                  gap: '6px'
+                }}
+              >
+                <Shield size={16} /> Admin Console
+              </button>
+            )}
 
             <button 
               onClick={handleLogOut}
               className="btn-primary"
               style={{
                 backgroundColor: 'var(--accent-terracotta)',
-                marginTop: '16px',
+                marginTop: '12px',
                 height: '46px',
               }}
             >
