@@ -3,16 +3,40 @@ import { readDb, writeDb, Payment } from '@/lib/db';
 import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
 
+const MEMBERS = [
+  "Aarav", "Ananya", "Ishaan", "Diya", "Kabir", "Meera", "Rohan", "Siddharth", "Tanvi", "Aditya"
+];
+
 export async function GET() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const db = await readDb(supabase);
-  const { payments, members } = db;
+
+  let payments: Payment[] = [];
+
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('payments')
+      .select('*');
+    if (!error && data) {
+      payments = data.map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        amount: Number(item.amount),
+        date: item.date
+      }));
+    } else if (error) {
+      console.error("Supabase GET payments error:", error);
+    }
+  } else {
+    // Fallback
+    const db = await readDb(supabase);
+    payments = db.payments;
+  }
 
   const TARGET_CONTRIBUTION_PER_MEMBER = 5000;
 
   const contributions: Record<string, number> = {};
-  members.forEach(name => {
+  MEMBERS.forEach(name => {
     contributions[name] = 0;
   });
 
@@ -24,7 +48,7 @@ export async function GET() {
 
   const totalPoolCollected = payments.reduce((sum, p) => sum + Number(p.amount), 0);
 
-  const memberProgress = members.map(name => {
+  const memberProgress = MEMBERS.map(name => {
     const contributed = contributions[name];
     const target = TARGET_CONTRIBUTION_PER_MEMBER;
     const remaining = Math.max(0, target - contributed);
@@ -43,7 +67,7 @@ export async function GET() {
     payments: payments.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
     totalPoolCollected,
     targetContributionPerPerson: TARGET_CONTRIBUTION_PER_MEMBER,
-    totalTargetPool: TARGET_CONTRIBUTION_PER_MEMBER * members.length,
+    totalTargetPool: TARGET_CONTRIBUTION_PER_MEMBER * MEMBERS.length,
     memberProgress
   });
 }
@@ -52,8 +76,6 @@ export async function POST(req: Request) {
   try {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
-    const db = await readDb(supabase);
-
     const body = await req.json();
     const { name, amount } = body;
 
@@ -61,7 +83,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Name and a positive amount are required" }, { status: 400 });
     }
 
-    if (!db.members.includes(name)) {
+    if (!MEMBERS.includes(name)) {
       return NextResponse.json({ error: `Invalid member name: ${name}` }, { status: 400 });
     }
 
@@ -72,6 +94,24 @@ export async function POST(req: Request) {
       date: new Date().toISOString()
     };
 
+    if (supabase) {
+      const { error } = await supabase
+        .from('payments')
+        .insert([{
+          id: newPayment.id,
+          name: newPayment.name,
+          amount: newPayment.amount,
+          date: newPayment.date
+        }]);
+      if (!error) {
+        return NextResponse.json({ success: true, payment: newPayment });
+      } else {
+        console.error("Supabase POST payment error:", error);
+      }
+    }
+
+    // Fallback
+    const db = await readDb(supabase);
     db.payments.push(newPayment);
     await writeDb(db, supabase);
 
@@ -86,8 +126,6 @@ export async function DELETE(req: Request) {
   try {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
-    const db = await readDb(supabase);
-
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 
@@ -95,6 +133,20 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "ID is required" }, { status: 400 });
     }
 
+    if (supabase) {
+      const { error } = await supabase
+        .from('payments')
+        .delete()
+        .eq('id', id);
+      if (!error) {
+        return NextResponse.json({ success: true });
+      } else {
+        console.error("Supabase DELETE payment error:", error);
+      }
+    }
+
+    // Fallback
+    const db = await readDb(supabase);
     const filtered = db.payments.filter(item => item.id !== id);
 
     if (filtered.length === db.payments.length) {

@@ -9,18 +9,45 @@ interface Settlement {
   amount: number;
 }
 
+const MEMBERS = [
+  "Aarav", "Ananya", "Ishaan", "Diya", "Kabir", "Meera", "Rohan", "Siddharth", "Tanvi", "Aditya"
+];
+
 export async function GET() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const db = await readDb(supabase);
-  const { expenses, members } = db;
+
+  let expenses: Expense[] = [];
+
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('*');
+    if (!error && data) {
+      expenses = data.map((item: any) => ({
+        id: item.id,
+        description: item.description,
+        amount: Number(item.amount),
+        paidBy: item.paid_by,
+        splitAmong: item.split_among || [],
+        category: item.category,
+        date: item.date
+      }));
+    } else if (error) {
+      console.error("Supabase GET expenses error:", error);
+    }
+  } else {
+    // Fallback
+    const db = await readDb(supabase);
+    expenses = db.expenses;
+  }
 
   // Initialize financial structures
   const paidAmounts: Record<string, number> = {};
   const shareAmounts: Record<string, number> = {};
   const netBalances: Record<string, number> = {};
 
-  members.forEach(name => {
+  MEMBERS.forEach(name => {
     paidAmounts[name] = 0;
     shareAmounts[name] = 0;
     netBalances[name] = 0;
@@ -53,14 +80,12 @@ export async function GET() {
   });
 
   // Calculate debt settlements (minimize transactions)
-  // Create copies of net balances for settlement logic
   const balances = { ...netBalances };
 
   const debtors: { name: string; amount: number }[] = [];
   const creditors: { name: string; amount: number }[] = [];
 
   Object.entries(balances).forEach(([name, bal]) => {
-    // Round to 2 decimal places to avoid floating point issues
     const roundedBal = Math.round(bal * 100) / 100;
     if (roundedBal < -0.01) {
       debtors.push({ name, amount: Math.abs(roundedBal) });
@@ -69,7 +94,7 @@ export async function GET() {
     }
   });
 
-  // Sort descending by amount to settle largest amounts first (greedy algorithm)
+  // Sort descending by amount to settle largest amounts first
   debtors.sort((a, b) => b.amount - a.amount);
   creditors.sort((a, b) => b.amount - a.amount);
 
@@ -103,7 +128,7 @@ export async function GET() {
   }
 
   // Formatting response
-  const memberBalances = members.map(name => ({
+  const memberBalances = MEMBERS.map(name => ({
     name,
     paid: Math.round(paidAmounts[name] * 100) / 100,
     spent: Math.round(shareAmounts[name] * 100) / 100,
@@ -122,8 +147,6 @@ export async function POST(req: Request) {
   try {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
-    const db = await readDb(supabase);
-
     const body = await req.json();
     const { description, amount, paidBy, splitAmong, category } = body;
 
@@ -131,13 +154,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing required fields (description, amount, paidBy, splitAmong)" }, { status: 400 });
     }
 
-    if (!db.members.includes(paidBy)) {
+    if (!MEMBERS.includes(paidBy)) {
       return NextResponse.json({ error: `Invalid payer: ${paidBy}` }, { status: 400 });
     }
 
-    // Verify all split members are valid
     for (const name of splitAmong) {
-      if (!db.members.includes(name)) {
+      if (!MEMBERS.includes(name)) {
         return NextResponse.json({ error: `Invalid split member: ${name}` }, { status: 400 });
       }
     }
@@ -152,6 +174,28 @@ export async function POST(req: Request) {
       date: new Date().toISOString()
     };
 
+    if (supabase) {
+      const { error } = await supabase
+        .from('expenses')
+        .insert([{
+          id: newExpense.id,
+          description: newExpense.description,
+          amount: newExpense.amount,
+          paid_by: newExpense.paidBy,
+          split_among: newExpense.splitAmong,
+          category: newExpense.category,
+          date: newExpense.date
+        }]);
+      
+      if (!error) {
+        return NextResponse.json({ success: true, expense: newExpense });
+      } else {
+        console.error("Supabase POST expense error:", error);
+      }
+    }
+
+    // Fallback
+    const db = await readDb(supabase);
     db.expenses.push(newExpense);
     await writeDb(db, supabase);
 
@@ -166,8 +210,6 @@ export async function DELETE(req: Request) {
   try {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
-    const db = await readDb(supabase);
-
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 
@@ -175,6 +217,20 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "ID is required" }, { status: 400 });
     }
 
+    if (supabase) {
+      const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', id);
+      if (!error) {
+        return NextResponse.json({ success: true });
+      } else {
+        console.error("Supabase DELETE expense error:", error);
+      }
+    }
+
+    // Fallback
+    const db = await readDb(supabase);
     const filtered = db.expenses.filter(item => item.id !== id);
 
     if (filtered.length === db.expenses.length) {
