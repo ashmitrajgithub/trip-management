@@ -82,6 +82,7 @@ export default function Home() {
         <div style={styles.headerTitleContainer}>
           <span style={styles.palmIcon}>🌴</span>
           <h1 style={styles.logoText}>Susegad Goa</h1>
+          <span className="sync-indicator" title="Connected to Supabase" />
         </div>
         <button 
           onClick={() => setIsProfileSwitcherOpen(true)}

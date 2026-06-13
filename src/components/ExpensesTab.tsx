@@ -29,6 +29,7 @@ export default function ExpensesTab({ currentUser, members }: ExpensesTabProps) 
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
 
   // Modal states
   const [isOpen, setIsOpen] = useState(false);
@@ -63,6 +64,15 @@ export default function ExpensesTab({ currentUser, members }: ExpensesTabProps) 
 
   useEffect(() => {
     fetchExpenses();
+    
+    // Load Tesseract CDN
+    if (!document.getElementById('tesseract-cdn')) {
+      const script = document.createElement('script');
+      script.id = 'tesseract-cdn';
+      script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.0.5/dist/tesseract.min.js';
+      script.async = true;
+      document.body.appendChild(script);
+    }
   }, []);
 
   // Update default payer when current user changes
@@ -166,31 +176,97 @@ export default function ExpensesTab({ currentUser, members }: ExpensesTabProps) 
     }
   };
 
-  // Simulated OCR Scanning Action
+  // Real OCR Scanning Action
   const handleScanReceipt = () => {
-    setIsScanning(true);
-    setScanStatus('Connecting to scanner sensor...');
-    
-    setTimeout(() => {
-      setScanStatus('Analyzing receipt contents (Goan Shack format)...');
-    }, 800);
+    document.getElementById('receipt-file-input')?.click();
+  };
 
-    setTimeout(() => {
-      // Pick random mock receipt details
-      const mockReceipts = [
-        { desc: "Britto's Shack Dinner & Cocktails 🍹", amt: "4850", cat: "Food" },
-        { desc: "South Goa Cab fare 🚕", amt: "3200", cat: "Travel" },
-        { desc: "Thalassa Siolim Booking 🍽️", amt: "7500", cat: "Food" },
-        { desc: "Anjuna Flea Market cashew feni 🍾", amt: "1200", cat: "Drinks" }
-      ];
-      const selected = mockReceipts[Math.floor(Math.random() * mockReceipts.length)];
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsScanning(true);
+    setScanStatus('Reading image file...');
+    
+    try {
+      if (!(window as any).Tesseract) {
+        setScanStatus('Loading OCR Engine...');
+        await new Promise((resolve, reject) => {
+          const script = document.getElementById('tesseract-cdn') as HTMLScriptElement;
+          if (script) {
+            if ((window as any).Tesseract) {
+              resolve(null);
+            } else {
+              script.onload = () => resolve(null);
+              script.onerror = reject;
+            }
+          } else {
+            // Load if not added
+            const s = document.createElement('script');
+            s.id = 'tesseract-cdn';
+            s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.0.5/dist/tesseract.min.js';
+            s.onload = () => resolve(null);
+            s.onerror = reject;
+            document.body.appendChild(s);
+          }
+        });
+      }
       
-      setDescription(selected.desc);
-      setAmount(selected.amt);
-      setCategory(selected.cat);
+      setScanStatus('Initializing OCR Worker...');
+      const { createWorker } = (window as any).Tesseract;
+      const worker = await createWorker('eng');
+      
+      setScanStatus('Scanning receipt text...');
+      const { data: { text } } = await worker.recognize(file);
+      await worker.terminate();
+      
+      setScanStatus('Parsing items and totals...');
+      const lines = text.split('\n');
+      let possibleAmount = 0;
+      let foundTotalLine = false;
+      
+      // Look for lines containing total, net, due, payable etc.
+      for (const line of lines) {
+        if (/total|net|due|payable|amount|sum/i.test(line)) {
+          const match = line.match(/(\d+(?:\.\d+)?)/);
+          if (match) {
+            const val = parseFloat(match[1]);
+            if (val > 10) {
+              possibleAmount = val;
+              foundTotalLine = true;
+              break;
+            }
+          }
+        }
+      }
+      
+      // If no total line found, get the maximum number in the text
+      if (!foundTotalLine) {
+        const allMatches = text.match(/(\d+(?:\.\d+)?)/g) || [];
+        const allNumbers = allMatches.map((n: string) => parseFloat(n)).filter((num: number) => num > 10 && num < 100000);
+        if (allNumbers.length > 0) {
+          possibleAmount = Math.max(...allNumbers);
+        }
+      }
+      
+      // Determine description from the first non-empty lines
+      const firstLines = lines.map((l: string) => l.trim()).filter((l: string) => l.length > 2).slice(0, 2);
+      let detectedDesc = firstLines.join(' - ');
+      if (!detectedDesc.trim()) {
+        detectedDesc = 'Scanned Receipt';
+      }
+      
+      setDescription(detectedDesc.substring(0, 50));
+      setAmount(possibleAmount ? Math.round(possibleAmount).toString() : '');
       setIsScanning(false);
       setScanStatus('');
-    }, 2200);
+    } catch (err: any) {
+      console.error("OCR Error:", err);
+      setScanStatus('Scan failed: ' + (err.message || 'Unknown error'));
+      setTimeout(() => {
+        setIsScanning(false);
+        setScanStatus('');
+      }, 2500);
+    }
   };
 
   // Group spends by category
@@ -321,36 +397,125 @@ export default function ExpensesTab({ currentUser, members }: ExpensesTabProps) 
       </div>
 
       {/* spending category charts */}
-      {totalSpend > 0 && (
-        <div className="glass-card" style={styles.categoryCard}>
-          <div style={styles.cardHeaderSmall}>
-            <BarChart3 size={16} style={{ color: 'var(--primary-teal)' }} />
-            <h2 style={styles.sectionTitleSmall}>SPENDING BREAKDOWN</h2>
-          </div>
-          <div style={styles.categoryContainer}>
-            {Object.entries(categoryTotals).map(([cat, amt]) => {
-              const pct = totalSpend > 0 ? Math.round((amt / totalSpend) * 100) : 0;
-              if (amt === 0) return null;
-              return (
-                <div key={cat} style={styles.catRow}>
-                  <div style={styles.catMeta}>
-                    <span style={{ fontSize: '13px', fontWeight: '600' }}>{cat}</span>
-                    <span className="mono-amount" style={{ fontSize: '12px' }}>
-                      ₹{amt.toLocaleString('en-IN')} ({pct}%)
-                    </span>
-                  </div>
-                  <div className="cat-progress-bg">
-                    <div 
-                      className={`cat-progress-fill ${getCategoryColorClass(cat)}`} 
-                      style={{ width: `${pct}%` }} 
-                    />
-                  </div>
+      {totalSpend > 0 && (() => {
+        let accumulatedPercent = 0;
+        const donutData = Object.entries(categoryTotals)
+          .filter(([_, amt]) => amt > 0)
+          .map(([cat, amt]) => {
+            const percent = totalSpend > 0 ? (amt / totalSpend) * 100 : 0;
+            const startPercent = accumulatedPercent;
+            accumulatedPercent += percent;
+            return { cat, amt, percent, startPercent };
+          });
+
+        const getCategoryColor = (cat: string) => {
+          switch (cat) {
+            case 'Stay': return '#3B82F6';
+            case 'Food': return '#FF5E5B';
+            case 'Travel': return '#F59E0B';
+            case 'Activities': return '#10B981';
+            case 'Drinks': return '#8B5CF6';
+            default: return '#64748B';
+          }
+        };
+
+        return (
+          <div className="glass-card" style={styles.categoryCard}>
+            <div style={styles.cardHeaderSmall}>
+              <BarChart3 size={16} style={{ color: 'var(--primary-teal)' }} />
+              <h2 style={styles.sectionTitleSmall}>SPENDING BREAKDOWN</h2>
+            </div>
+            
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'center', justifyContent: 'center' }}>
+              {/* Donut Graphic */}
+              <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', width: '130px', height: '130px' }}>
+                <svg viewBox="0 0 100 100" width="130" height="130" style={{ transform: 'rotate(-90deg)' }}>
+                  {donutData.map((d) => {
+                    const r = 35;
+                    const strokeWidth = 10;
+                    const circumference = 2 * Math.PI * r;
+                    const dashArray = `${(d.percent * circumference) / 100} ${circumference}`;
+                    const angle = (d.startPercent / 100) * 360;
+                    return (
+                      <circle
+                        key={d.cat}
+                        cx="50"
+                        cy="50"
+                        r={r}
+                        fill="transparent"
+                        stroke={getCategoryColor(d.cat)}
+                        strokeWidth={hoveredCategory === d.cat ? strokeWidth + 2 : strokeWidth}
+                        strokeDasharray={dashArray}
+                        transform={`rotate(${angle} 50 50)`}
+                        style={{
+                          transition: 'all 0.2s ease',
+                          cursor: 'pointer',
+                          opacity: hoveredCategory && hoveredCategory !== d.cat ? 0.6 : 1,
+                        }}
+                        onMouseEnter={() => setHoveredCategory(d.cat)}
+                        onMouseLeave={() => setHoveredCategory(null)}
+                      />
+                    );
+                  })}
+                  {/* Center cover */}
+                  <circle cx="50" cy="50" r="28" fill="#FAF9F6" />
+                </svg>
+                
+                {/* Center text overlay */}
+                <div style={{
+                  position: 'absolute',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  pointerEvents: 'none',
+                  textAlign: 'center',
+                  width: '70px'
+                }}>
+                  <span style={{ fontSize: '9px', fontWeight: 'bold', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                    {hoveredCategory ? hoveredCategory : 'Total'}
+                  </span>
+                  <span className="mono-amount" style={{ fontSize: '13px', fontWeight: '800', color: 'var(--primary-teal)', marginTop: '2px' }}>
+                    ₹{Math.round(hoveredCategory ? categoryTotals[hoveredCategory] : totalSpend).toLocaleString('en-IN')}
+                  </span>
                 </div>
-              );
-            })}
+              </div>
+
+              {/* Text Legend List */}
+              <div style={{ flex: 1, minWidth: '160px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {donutData.map((d) => {
+                  const isHovered = hoveredCategory === d.cat;
+                  return (
+                    <div 
+                      key={d.cat}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '6px 8px',
+                        borderRadius: '8px',
+                        backgroundColor: isHovered ? 'var(--primary-teal-soft)' : 'transparent',
+                        transition: 'background-color 0.2s',
+                        cursor: 'pointer'
+                      }}
+                      onMouseEnter={() => setHoveredCategory(d.cat)}
+                      onMouseLeave={() => setHoveredCategory(null)}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: getCategoryColor(d.cat) }} />
+                        <span style={{ fontSize: '13px', fontWeight: '700', color: isHovered ? 'var(--primary-teal)' : 'var(--text-charcoal)' }}>{d.cat}</span>
+                      </div>
+                      <span className="mono-amount" style={{ fontSize: '12px', fontWeight: '700' }}>
+                        ₹{d.amt.toLocaleString('en-IN')} ({Math.round(d.percent)}%)
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* SVG Interactive Debt Graph Flowchart */}
       {flowchart && (
@@ -571,12 +736,19 @@ export default function ExpensesTab({ currentUser, members }: ExpensesTabProps) 
             ) : (
               <form onSubmit={handleSubmit}>
                 <div style={styles.scannerTriggerRow}>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    id="receipt-file-input" 
+                    style={{ display: 'none' }} 
+                    onChange={handleFileChange} 
+                  />
                   <button 
                     type="button" 
                     onClick={handleScanReceipt} 
                     style={styles.scannerBtn}
                   >
-                    <Scan size={14} /> Auto-Scan Goan Shack Receipt 📷
+                    <Scan size={14} /> Upload & Scan Receipt 📷
                   </button>
                 </div>
 

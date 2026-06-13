@@ -108,32 +108,60 @@ export default function ChatTab({ currentUser }: ChatTabProps) {
     }
   };
 
-  // One-tap Mock Sunset Photo Share
-  const handleSharePhoto = async () => {
-    if (sending) return;
-    setSending(true);
-    try {
-      const images = [
-        { text: "Sunset at Vagator beach right now! 🌅🌊", url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=500&auto=format&fit=crop&q=60" },
-        { text: "Chilling with Cashew Feni at the shack! 🍹🌴", url: "https://images.unsplash.com/photo-1540541338287-41700207dee6?w=500&auto=format&fit=crop&q=60" }
-      ];
-      const selected = images[Math.floor(Math.random() * images.length)];
+  // Real Photo Upload and Share Action
+  const handleSharePhoto = () => {
+    document.getElementById('chat-image-input')?.click();
+  };
 
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sender: currentUser,
-          text: selected.text,
-          type: 'image',
-          mediaUrl: selected.url
-        })
-      });
-      if (!res.ok) throw new Error('Failed to share image');
-      await fetchMessages(true);
+  const handleChatImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || sending) return;
+    setSending(true);
+
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = async () => {
+          // Compress using canvas to keep payload small (<100KB)
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 600;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > MAX_WIDTH) {
+            height = (height * MAX_WIDTH) / width;
+            width = MAX_WIDTH;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+
+          const base64Url = canvas.toDataURL('image/jpeg', 0.6);
+
+          const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sender: currentUser,
+              text: `Sent a photo 📸`,
+              type: 'image',
+              mediaUrl: base64Url
+            })
+          });
+
+          if (!res.ok) throw new Error('Failed to send image');
+          await fetchMessages(true);
+          setSending(false);
+        };
+      };
     } catch (err: any) {
-      alert(err.message);
-    } finally {
+      alert(err.message || 'Failed to process image');
       setSending(false);
     }
   };
@@ -364,6 +392,13 @@ export default function ChatTab({ currentUser }: ChatTabProps) {
       <form onSubmit={handleSend} style={styles.inputForm}>
         {/* Attachments */}
         <div style={styles.attachmentBar}>
+          <input 
+            type="file" 
+            accept="image/*" 
+            id="chat-image-input" 
+            style={{ display: 'none' }} 
+            onChange={handleChatImageChange} 
+          />
           <button 
             type="button" 
             onClick={handleShareLocation}
