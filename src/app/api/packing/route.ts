@@ -3,7 +3,7 @@ import { readDb, writeDb, PackingItem } from '@/lib/db';
 import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
 
-const MEMBERS = [
+const MEMBERS_FALLBACK = [
   "Aarav", "Ananya", "Ishaan", "Diya", "Kabir", "Meera", "Rohan", "Siddharth", "Tanvi", "Aditya"
 ];
 
@@ -12,6 +12,12 @@ export async function GET() {
   const supabase = createClient(cookieStore);
 
   if (supabase) {
+    // Authenticate the session
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { data, error } = await supabase
       .from('packing_items')
       .select('*');
@@ -37,6 +43,15 @@ export async function POST(req: Request) {
   try {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
+
+    if (supabase) {
+      // Authenticate the session
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+
     const body = await req.json();
     const { itemId, userName } = body;
 
@@ -44,7 +59,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Item ID and User Name are required" }, { status: 400 });
     }
 
-    if (!MEMBERS.includes(userName)) {
+    // Resolve members list dynamically
+    let membersList = MEMBERS_FALLBACK;
+    if (supabase) {
+      const { data: profilesData } = await supabase.from('profiles').select('display_name');
+      if (profilesData && profilesData.length > 0) {
+        membersList = profilesData.map((p: any) => p.display_name);
+      }
+    }
+
+    if (!membersList.includes(userName)) {
       return NextResponse.json({ error: "Invalid user name" }, { status: 400 });
     }
 
@@ -115,6 +139,15 @@ export async function PUT(req: Request) {
   try {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
+
+    if (supabase) {
+      // Authenticate the session
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+
     const body = await req.json();
     const { item, category } = body;
 

@@ -1,76 +1,118 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, CreditCard, PiggyBank, MessageSquare, ChevronRight } from 'lucide-react';
+import { Calendar, CreditCard, PiggyBank, MessageSquare } from 'lucide-react';
 import ItineraryTab from '@/components/ItineraryTab';
 import ExpensesTab from '@/components/ExpensesTab';
 import PaymentsTab from '@/components/PaymentsTab';
 import ChatTab from '@/components/ChatTab';
+import { createClient } from '@/utils/supabase/client';
 
-const MEMBERS = [
-  "Aarav",
-  "Ananya",
-  "Ishaan",
-  "Diya",
-  "Kabir",
-  "Meera",
-  "Rohan",
-  "Siddharth",
-  "Tanvi",
-  "Aditya"
+const DEFAULT_MEMBERS = [
+  "Aarav", "Ananya", "Ishaan", "Diya", "Kabir", "Meera", "Rohan", "Siddharth", "Tanvi", "Aditya"
 ];
 
 export default function Home() {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [members, setMembers] = useState<string[]>(DEFAULT_MEMBERS);
   const [activeTab, setActiveTab] = useState<'itinerary' | 'expenses' | 'payments' | 'chat'>('itinerary');
   const [isProfileSwitcherOpen, setIsProfileSwitcherOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Read current user from localStorage on mount
+  const supabase = createClient();
+
   useEffect(() => {
     setIsMounted(true);
-    const storedUser = localStorage.getItem('susegad_user');
-    if (storedUser && MEMBERS.includes(storedUser)) {
-      setCurrentUser(storedUser);
-    }
+    const initSession = async () => {
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (!user || userError) {
+          window.location.href = '/login';
+          return;
+        }
+
+        setCurrentUserEmail(user.email || '');
+
+        // Try to get profile
+        let displayName = '';
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('display_name')
+          .eq('id', user.id)
+          .single();
+
+        if (profile && profile.display_name) {
+          displayName = profile.display_name;
+        } else {
+          // Fallback to metadata
+          displayName = user.user_metadata?.display_name || user.email?.split('@')[0] || 'User';
+          
+          // Self-heal profile insertion
+          try {
+            await supabase.from('profiles').insert([{
+              id: user.id,
+              display_name: displayName,
+              email: user.email || ''
+            }]);
+          } catch (e) {
+            console.error('Failed to auto-insert profile:', e);
+          }
+        }
+
+        setCurrentUser(displayName);
+
+        // Fetch dynamic group members list
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('display_name')
+          .order('display_name', { ascending: true });
+
+        if (profiles && profiles.length > 0) {
+          setMembers(profiles.map((p: any) => p.display_name));
+        } else {
+          // If no profiles loaded, use default fallback including current user
+          const fallbackList = [...DEFAULT_MEMBERS];
+          if (!fallbackList.includes(displayName)) {
+            fallbackList.push(displayName);
+          }
+          setMembers(fallbackList);
+        }
+      } catch (err) {
+        console.error('Session initialization error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initSession();
   }, []);
 
-  const selectUser = (name: string) => {
-    localStorage.setItem('susegad_user', name);
-    setCurrentUser(name);
-    setIsProfileSwitcherOpen(false);
+  const handleLogOut = async () => {
+    try {
+      await supabase.auth.signOut();
+      window.location.href = '/login';
+    } catch (e) {
+      console.error('Sign out error:', e);
+      window.location.href = '/login';
+    }
   };
 
   // Prevent SSR flash of selected user
-  if (!isMounted) {
-    return <div style={styles.loadingScreen}>Susegad Goa Tracker...</div>;
+  if (!isMounted || loading) {
+    return (
+      <div style={styles.loadingScreen}>
+        <div className="sync-indicator" style={{ width: '12px', height: '12px', marginBottom: '16px' }} />
+        <div>Susegad Goa Tracker...</div>
+      </div>
+    );
   }
 
-  // If no user is logged in, show the profile chooser overlay
   if (!currentUser) {
     return (
-      <div style={styles.welcomeContainer}>
-        <div style={styles.welcomeBox}>
-          <div style={styles.sunGraphic}>🏖️</div>
-          <h1 style={styles.welcomeTitle}>Susegad Goa '26</h1>
-          <p style={styles.welcomeSubtitle}>
-            Welcome to the Goa group planner! Select your name to check the itinerary, log shared expenses, and chat.
-          </p>
-
-          <div style={styles.memberChooserGrid}>
-            <div style={styles.gridHeader}>Who are you?</div>
-            {MEMBERS.map(name => (
-              <button 
-                key={name} 
-                onClick={() => selectUser(name)}
-                style={styles.welcomeUserBtn}
-              >
-                <span>{name}</span>
-                <ChevronRight size={16} style={{ opacity: 0.5 }} />
-              </button>
-            ))}
-          </div>
-        </div>
+      <div style={styles.loadingScreen}>
+        <div>Redirecting to login...</div>
       </div>
     );
   }
@@ -99,8 +141,8 @@ export default function Home() {
       {/* Main Content Area */}
       <main style={styles.mainContent}>
         {activeTab === 'itinerary' && <ItineraryTab currentUser={currentUser} />}
-        {activeTab === 'expenses' && <ExpensesTab currentUser={currentUser} members={MEMBERS} />}
-        {activeTab === 'payments' && <PaymentsTab currentUser={currentUser} members={MEMBERS} />}
+        {activeTab === 'expenses' && <ExpensesTab currentUser={currentUser} members={members} />}
+        {activeTab === 'payments' && <PaymentsTab currentUser={currentUser} members={members} />}
         {activeTab === 'chat' && <ChatTab currentUser={currentUser} />}
       </main>
 
@@ -151,12 +193,12 @@ export default function Home() {
         </button>
       </nav>
 
-      {/* Profile Switcher Modal */}
+      {/* Account Details Modal */}
       {isProfileSwitcherOpen && (
         <div className="modal-overlay">
-          <div className="modal-content">
+          <div className="modal-content" style={styles.accountModalContent}>
             <div className="modal-header">
-              <h2>Switch Member Profile</h2>
+              <h2>My Account</h2>
               <button 
                 className="modal-close" 
                 onClick={() => setIsProfileSwitcherOpen(false)}
@@ -165,39 +207,32 @@ export default function Home() {
               </button>
             </div>
             
-            <p style={styles.switcherSub}>
-              Switching profiles lets you act as another group member. This changes who actions (chats, payments, expenses) are attributed to.
-            </p>
-
-            <div style={styles.switcherList}>
-              {MEMBERS.map(name => (
-                <button
-                  key={name}
-                  onClick={() => selectUser(name)}
-                  style={{
-                    ...styles.switcherUserBtn,
-                    backgroundColor: currentUser === name ? 'var(--primary-teal-soft)' : '#FFFFFF',
-                    borderColor: currentUser === name ? 'var(--primary-teal)' : 'var(--border-color)',
-                  }}
-                >
-                  <div style={styles.switcherUserLeft}>
-                    <span style={{
-                      ...styles.avatarCircle, 
-                      backgroundColor: currentUser === name ? 'var(--primary-teal)' : 'var(--secondary-mustard)',
-                      color: 'var(--bg-sand)'
-                    }}>
-                      {name.substring(0, 1)}
-                    </span>
-                    <span style={{ fontWeight: currentUser === name ? '600' : '400' }}>
-                      {name} {currentUser === name ? '(You)' : ''}
-                    </span>
-                  </div>
-                  {currentUser === name && (
-                    <span style={{ color: 'var(--primary-teal)', fontSize: '12px', fontWeight: 'bold' }}>Active</span>
-                  )}
-                </button>
-              ))}
+            <div style={styles.accountDetailsBox}>
+              <div style={styles.bigAvatarCircle}>
+                {currentUser.substring(0, 2).toUpperCase()}
+              </div>
+              <h3 style={styles.accountName}>{currentUser}</h3>
+              <p style={styles.accountEmail}>{currentUserEmail}</p>
+              
+              <div style={styles.statusBadgeRow}>
+                <span className="sync-indicator" style={{ marginLeft: 0, marginRight: '6px' }} />
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600' }}>
+                  Connected to Supabase Auth
+                </span>
+              </div>
             </div>
+
+            <button 
+              onClick={handleLogOut}
+              className="btn-primary"
+              style={{
+                backgroundColor: 'var(--accent-terracotta)',
+                marginTop: '16px',
+                height: '46px',
+              }}
+            >
+              Sign Out
+            </button>
           </div>
         </div>
       )}
@@ -215,83 +250,15 @@ function XIcon() {
 const styles: Record<string, React.CSSProperties> = {
   loadingScreen: {
     display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     height: '100vh',
     backgroundColor: 'var(--bg-sand)',
     color: 'var(--primary-teal)',
     fontFamily: 'var(--font-outfit), sans-serif',
-    fontSize: '22px',
+    fontSize: '20px',
     fontWeight: '700',
-  },
-  welcomeContainer: {
-    backgroundColor: 'var(--bg-sand)',
-    minHeight: '100dvh',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '20px',
-  },
-  welcomeBox: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: '24px',
-    border: '1.5px solid var(--border-color)',
-    padding: '30px 24px',
-    width: '100%',
-    maxWidth: '420px',
-    boxShadow: 'var(--shadow-lg)',
-    textAlign: 'center' as const,
-    display: 'flex',
-    flexDirection: 'column' as const,
-    alignItems: 'center',
-  },
-  sunGraphic: {
-    fontSize: '44px',
-    marginBottom: '10px',
-  },
-  welcomeTitle: {
-    fontSize: '28px',
-    fontWeight: '800',
-    color: 'var(--primary-teal)',
-    fontFamily: 'var(--font-outfit), sans-serif',
-    marginBottom: '8px',
-  },
-  welcomeSubtitle: {
-    fontSize: '13px',
-    color: 'var(--text-muted)',
-    lineHeight: '1.5',
-    marginBottom: '24px',
-  },
-  memberChooserGrid: {
-    width: '100%',
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '8px',
-  },
-  gridHeader: {
-    fontSize: '11px',
-    fontWeight: '700',
-    color: 'var(--text-muted)',
-    letterSpacing: '0.05em',
-    textTransform: 'uppercase' as const,
-    textAlign: 'left' as const,
-    marginBottom: '4px',
-  },
-  welcomeUserBtn: {
-    backgroundColor: 'var(--bg-sand)',
-    border: '1.5px solid var(--border-color)',
-    borderRadius: '12px',
-    padding: '12px 16px',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    cursor: 'pointer',
-    fontFamily: 'var(--font-inter), sans-serif',
-    fontSize: '15px',
-    color: 'var(--text-charcoal)',
-    fontWeight: '600',
-    width: '100%',
-    transition: 'all 0.15s ease',
   },
   appShell: {
     display: 'flex',
@@ -357,7 +324,7 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     overflowY: 'auto' as const,
     padding: '16px',
-    paddingBottom: '90px', // Extra buffer for sticky bottom tabs
+    paddingBottom: '90px',
     backgroundColor: 'var(--bg-sand)',
   },
   bottomNav: {
@@ -395,36 +362,59 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: '700',
     letterSpacing: '0.01em',
   },
-  switcherSub: {
-    fontSize: '13px',
-    color: 'var(--text-muted)',
-    lineHeight: '1.45',
-    marginBottom: '16px',
+  accountModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: '28px',
+    borderTopRightRadius: '28px',
+    width: '100%',
+    maxWidth: '420px',
+    padding: '30px 24px',
+    boxShadow: '0 -12px 36px rgba(15, 23, 42, 0.15)',
   },
-  switcherList: {
+  accountDetailsBox: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '8px',
-    maxHeight: '350px',
-    overflowY: 'auto' as const,
-    padding: '4px',
-  },
-  switcherUserBtn: {
-    display: 'flex',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '10px 14px',
-    border: '1.5px solid',
-    borderRadius: '10px',
-    cursor: 'pointer',
-    width: '100%',
-    fontFamily: 'var(--font-inter), sans-serif',
+    padding: '24px 16px',
+    backgroundColor: 'var(--bg-sand)',
+    borderRadius: '16px',
+    border: '1px solid var(--border-color)',
+    marginBottom: '8px',
+  },
+  bigAvatarCircle: {
+    backgroundColor: 'var(--primary-teal)',
+    color: 'var(--bg-sand)',
+    width: '64px',
+    height: '64px',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '24px',
+    fontWeight: '800',
+    marginBottom: '12px',
+    border: '2px solid rgba(255, 255, 255, 0.8)',
+    boxShadow: 'var(--shadow-md)',
+  },
+  accountName: {
+    fontSize: '20px',
+    fontWeight: '800',
+    color: 'var(--primary-teal)',
+    fontFamily: 'var(--font-outfit), sans-serif',
+  },
+  accountEmail: {
     fontSize: '14px',
-    transition: 'all 0.15s ease',
+    color: 'var(--text-muted)',
+    marginTop: '4px',
+    marginBottom: '16px',
   },
-  switcherUserLeft: {
+  statusBadgeRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.06)',
+    padding: '6px 12px',
+    borderRadius: '20px',
+    border: '1px solid rgba(16, 185, 129, 0.12)',
   },
 };

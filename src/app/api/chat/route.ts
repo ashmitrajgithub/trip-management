@@ -3,7 +3,7 @@ import { readDb, writeDb, ChatMessage } from '@/lib/db';
 import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
 
-const MEMBERS = [
+const MEMBERS_FALLBACK = [
   "Aarav", "Ananya", "Ishaan", "Diya", "Kabir", "Meera", "Rohan", "Siddharth", "Tanvi", "Aditya"
 ];
 
@@ -12,6 +12,12 @@ export async function GET() {
   const supabase = createClient(cookieStore);
 
   if (supabase) {
+    // Authenticate the session
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { data, error } = await supabase
       .from('chat_messages')
       .select('*')
@@ -34,7 +40,7 @@ export async function GET() {
     }
   }
 
-  // Fallback
+  // Fallback (for local development fallback mode if Supabase is disabled)
   const db = await readDb(supabase);
   const limit = 100;
   const recentMessages = db.chat.slice(-limit);
@@ -45,8 +51,26 @@ export async function POST(req: Request) {
   try {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
+    
+    if (supabase) {
+      // Authenticate the session
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+
     const body = await req.json();
     const { sender, text, type, mediaUrl, action, messageId, emoji } = body;
+
+    // Resolve members list
+    let membersList = MEMBERS_FALLBACK;
+    if (supabase) {
+      const { data: profilesData } = await supabase.from('profiles').select('display_name');
+      if (profilesData && profilesData.length > 0) {
+        membersList = profilesData.map((p: any) => p.display_name);
+      }
+    }
 
     // Handle reaction toggles
     if (action === 'react') {
@@ -54,7 +78,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Missing reaction details" }, { status: 400 });
       }
 
-      if (!MEMBERS.includes(sender)) {
+      if (!membersList.includes(sender)) {
         return NextResponse.json({ error: "Invalid sender" }, { status: 400 });
       }
 
@@ -134,7 +158,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Sender and text content are required" }, { status: 400 });
     }
 
-    if (!MEMBERS.includes(sender)) {
+    if (!membersList.includes(sender)) {
       return NextResponse.json({ error: `Invalid sender name: ${sender}` }, { status: 400 });
     }
 

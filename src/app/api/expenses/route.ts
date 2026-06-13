@@ -9,13 +9,21 @@ interface Settlement {
   amount: number;
 }
 
-const MEMBERS = [
+const MEMBERS_FALLBACK = [
   "Aarav", "Ananya", "Ishaan", "Diya", "Kabir", "Meera", "Rohan", "Siddharth", "Tanvi", "Aditya"
 ];
 
 export async function GET() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+
+  if (supabase) {
+    // Authenticate the session
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
 
   let expenses: Expense[] = [];
 
@@ -42,12 +50,21 @@ export async function GET() {
     expenses = db.expenses;
   }
 
+  // Resolve members list dynamically
+  let membersList = MEMBERS_FALLBACK;
+  if (supabase) {
+    const { data: profilesData } = await supabase.from('profiles').select('display_name');
+    if (profilesData && profilesData.length > 0) {
+      membersList = profilesData.map((p: any) => p.display_name);
+    }
+  }
+
   // Initialize financial structures
   const paidAmounts: Record<string, number> = {};
   const shareAmounts: Record<string, number> = {};
   const netBalances: Record<string, number> = {};
 
-  MEMBERS.forEach(name => {
+  membersList.forEach(name => {
     paidAmounts[name] = 0;
     shareAmounts[name] = 0;
     netBalances[name] = 0;
@@ -128,7 +145,7 @@ export async function GET() {
   }
 
   // Formatting response
-  const memberBalances = MEMBERS.map(name => ({
+  const memberBalances = membersList.map(name => ({
     name,
     paid: Math.round(paidAmounts[name] * 100) / 100,
     spent: Math.round(shareAmounts[name] * 100) / 100,
@@ -147,6 +164,15 @@ export async function POST(req: Request) {
   try {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
+
+    if (supabase) {
+      // Authenticate the session
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+
     const body = await req.json();
     const { description, amount, paidBy, splitAmong, category } = body;
 
@@ -154,12 +180,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing required fields (description, amount, paidBy, splitAmong)" }, { status: 400 });
     }
 
-    if (!MEMBERS.includes(paidBy)) {
+    // Resolve members list dynamically
+    let membersList = MEMBERS_FALLBACK;
+    if (supabase) {
+      const { data: profilesData } = await supabase.from('profiles').select('display_name');
+      if (profilesData && profilesData.length > 0) {
+        membersList = profilesData.map((p: any) => p.display_name);
+      }
+    }
+
+    if (!membersList.includes(paidBy)) {
       return NextResponse.json({ error: `Invalid payer: ${paidBy}` }, { status: 400 });
     }
 
     for (const name of splitAmong) {
-      if (!MEMBERS.includes(name)) {
+      if (!membersList.includes(name)) {
         return NextResponse.json({ error: `Invalid split member: ${name}` }, { status: 400 });
       }
     }
@@ -210,6 +245,15 @@ export async function DELETE(req: Request) {
   try {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
+
+    if (supabase) {
+      // Authenticate the session
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 

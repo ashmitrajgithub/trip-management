@@ -3,13 +3,21 @@ import { readDb, writeDb, Payment } from '@/lib/db';
 import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
 
-const MEMBERS = [
+const MEMBERS_FALLBACK = [
   "Aarav", "Ananya", "Ishaan", "Diya", "Kabir", "Meera", "Rohan", "Siddharth", "Tanvi", "Aditya"
 ];
 
 export async function GET() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+
+  if (supabase) {
+    // Authenticate the session
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
 
   let payments: Payment[] = [];
 
@@ -33,10 +41,19 @@ export async function GET() {
     payments = db.payments;
   }
 
+  // Resolve members list dynamically
+  let membersList = MEMBERS_FALLBACK;
+  if (supabase) {
+    const { data: profilesData } = await supabase.from('profiles').select('display_name');
+    if (profilesData && profilesData.length > 0) {
+      membersList = profilesData.map((p: any) => p.display_name);
+    }
+  }
+
   const TARGET_CONTRIBUTION_PER_MEMBER = 5000;
 
   const contributions: Record<string, number> = {};
-  MEMBERS.forEach(name => {
+  membersList.forEach(name => {
     contributions[name] = 0;
   });
 
@@ -48,7 +65,7 @@ export async function GET() {
 
   const totalPoolCollected = payments.reduce((sum, p) => sum + Number(p.amount), 0);
 
-  const memberProgress = MEMBERS.map(name => {
+  const memberProgress = membersList.map(name => {
     const contributed = contributions[name];
     const target = TARGET_CONTRIBUTION_PER_MEMBER;
     const remaining = Math.max(0, target - contributed);
@@ -67,7 +84,7 @@ export async function GET() {
     payments: payments.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
     totalPoolCollected,
     targetContributionPerPerson: TARGET_CONTRIBUTION_PER_MEMBER,
-    totalTargetPool: TARGET_CONTRIBUTION_PER_MEMBER * MEMBERS.length,
+    totalTargetPool: TARGET_CONTRIBUTION_PER_MEMBER * membersList.length,
     memberProgress
   });
 }
@@ -76,6 +93,15 @@ export async function POST(req: Request) {
   try {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
+
+    if (supabase) {
+      // Authenticate the session
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+
     const body = await req.json();
     const { name, amount } = body;
 
@@ -83,7 +109,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Name and a positive amount are required" }, { status: 400 });
     }
 
-    if (!MEMBERS.includes(name)) {
+    // Resolve members list dynamically
+    let membersList = MEMBERS_FALLBACK;
+    if (supabase) {
+      const { data: profilesData } = await supabase.from('profiles').select('display_name');
+      if (profilesData && profilesData.length > 0) {
+        membersList = profilesData.map((p: any) => p.display_name);
+      }
+    }
+
+    if (!membersList.includes(name)) {
       return NextResponse.json({ error: `Invalid member name: ${name}` }, { status: 400 });
     }
 
@@ -126,6 +161,15 @@ export async function DELETE(req: Request) {
   try {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
+
+    if (supabase) {
+      // Authenticate the session
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 

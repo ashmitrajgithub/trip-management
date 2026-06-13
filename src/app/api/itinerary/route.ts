@@ -8,6 +8,12 @@ export async function GET() {
   const supabase = createClient(cookieStore);
 
   if (supabase) {
+    // Authenticate the session
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { data, error } = await supabase
       .from('activities')
       .select('*')
@@ -44,6 +50,15 @@ export async function POST(req: Request) {
   try {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
+
+    if (supabase) {
+      // Authenticate the session
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+
     const body = await req.json();
     const { day, time, title, description, category, location, estimatedCost } = body;
 
@@ -99,6 +114,15 @@ export async function PUT(req: Request) {
   try {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
+
+    if (supabase) {
+      // Authenticate the session
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+
     const body = await req.json();
     const { id, day, time, title, description, category, location, estimatedCost } = body;
 
@@ -159,6 +183,15 @@ export async function DELETE(req: Request) {
   try {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
+
+    if (supabase) {
+      // Authenticate the session
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 
