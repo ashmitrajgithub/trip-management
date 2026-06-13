@@ -1,0 +1,366 @@
+:root {
+  /* Color Scheme: Sunset Coral & Twilight Slate */
+  --bg-sand: #FAF9F6; /* Warm premium alabaster beach sand */
+  --primary-teal: #0F172A; /* Midnight twilight slate blue - deep, modern, high-contrast */
+  --primary-teal-light: #1E293B; 
+  --primary-teal-soft: rgba(15, 23, 42, 0.05);
+  
+  --accent-terracotta: #FF5E5B; /* Vibrant sunset coral orange-red - energetic, premium */
+  --accent-terracotta-soft: rgba(255, 94, 91, 0.08);
+  
+  --secondary-mustard: #F59E0B; /* Sunbeam gold/amber */
+  --secondary-mustard-soft: rgba(245, 158, 11, 0.08);
+  
+  --text-charcoal: #1E293B; /* Slate 800 */
+  --text-muted: #64748B; /* Slate 500 */
+  --card-bg: #FFFFFF;
+  --border-color: rgba(15, 23, 42, 0.06);
+  
+  --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.03);
+  --shadow-md: 0 6px 16px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 16px 36px rgba(15, 23, 42, 0.08);
+  
+  /* Financial States */
+  --state-green: #10B981; /* Emerald Green */
+  --state-green-soft: rgba(16, 185, 129, 0.08);
+  --state-rust: #EF4444; /* Crimson Red */
+  --state-rust-soft: rgba(239, 68, 68, 0.08);
+}
+
+/* Reset & Mobile App shell */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  background-color: var(--bg-sand);
+  color: var(--text-charcoal);
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  height: 100%;
+  overflow: hidden;
+  width: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  /* Premium twilight sunset gradient shift */
+  background: linear-gradient(135deg, #FAF9F6 0%, #F5F3EF 50%, #ECE9E4 100%);
+  background-size: 200% 200%;
+  animation: sunsetShift 15s ease infinite alternate;
+}
+
+@keyframes sunsetShift {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+
+/* Typography styles */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-outfit), sans-serif;
+  color: var(--primary-teal);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.mono-amount {
+  font-family: var(--font-mono), monospace;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+/* Page animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Custom Scrollbars */
+.scrollable-content {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px;
+  padding-bottom: 90px;
+}
+
+/* Custom UI Components - Glassmorphism */
+.glass-card {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card:hover {
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.btn-primary {
+  background-color: var(--accent-terracotta); /* Sunset Coral call-to-actions */
+  color: #FFFFFF;
+  border: none;
+  border-radius: 12px;
+  padding: 14px 20px;
+  font-family: var(--font-inter), sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  box-shadow: 0 4px 12px rgba(255, 94, 91, 0.2);
+  width: 100%;
+}
+
+.btn-primary:active {
+  background-color: #E2504D;
+  transform: scale(0.98);
+}
+
+.btn-secondary {
+  background-color: transparent;
+  color: var(--primary-teal);
+  border: 1.5px solid var(--primary-teal);
+  border-radius: 12px;
+  padding: 12px 20px;
+  font-family: var(--font-inter), sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.btn-secondary:active {
+  background-color: var(--primary-teal-soft);
+  transform: scale(0.98);
+}
+
+/* Azulejo Tile Decorative Border - styled with gold dots */
+.azulejo-pattern {
+  background-color: var(--primary-teal);
+  background-image: radial-gradient(var(--accent-terracotta) 1px, transparent 0),
+                    radial-gradient(rgba(255, 255, 255, 0.3) 1px, transparent 0);
+  background-size: 12px 12px;
+  background-position: 0 0, 6px 6px;
+  opacity: 0.25;
+  height: 6px;
+  width: 100%;
+}
+
+/* Form Inputs */
+.input-group {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.input-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.input-field {
+  background-color: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 15px;
+  font-family: var(--font-inter), sans-serif;
+  color: var(--text-charcoal);
+  transition: all 0.2s ease;
+}
+
+.input-field:focus {
+  outline: none;
+  background-color: #FFFFFF;
+  border-color: var(--primary-teal);
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
+}
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.badge-beach {
+  background-color: var(--secondary-mustard-soft);
+  color: #B45309;
+  border: 1px solid rgba(245, 158, 11, 0.15);
+}
+
+.badge-adventure {
+  background-color: rgba(14, 165, 233, 0.08);
+  color: #0369A1;
+  border: 1px solid rgba(14, 165, 233, 0.15);
+}
+
+.badge-nightlife {
+  background-color: var(--accent-terracotta-soft);
+  color: var(--accent-terracotta);
+  border: 1px solid rgba(255, 94, 91, 0.15);
+}
+
+.badge-culture {
+  background-color: var(--state-green-soft);
+  color: #047857;
+  border: 1px solid rgba(16, 185, 129, 0.15);
+}
+
+.badge-other {
+  background-color: rgba(100, 116, 139, 0.08);
+  color: var(--text-muted);
+  border: 1px solid rgba(100, 116, 139, 0.15);
+}
+
+/* Modals */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-content {
+  background-color: var(--bg-sand);
+  border-top-left-radius: 28px;
+  border-top-right-radius: 28px;
+  width: 100%;
+  max-width: 500px;
+  padding: 26px 22px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 -12px 36px rgba(15, 23, 42, 0.15);
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 6px;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.modal-close:active {
+  background-color: rgba(15, 23, 42, 0.05);
+}
+
+/* Simulated OCR Camera and Scanner Animation */
+.camera-container {
+  position: relative;
+  background-color: #000000;
+  border-radius: 14px;
+  overflow: hidden;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  border: 2px dashed rgba(255, 255, 255, 0.2);
+}
+
+.camera-laser {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background-color: #10B981;
+  box-shadow: 0 0 10px #10B981, 0 0 20px #10B981;
+  animation: scannerAnim 2s infinite linear;
+  z-index: 10;
+}
+
+@keyframes scannerAnim {
+  0% { top: 0%; }
+  50% { top: 100%; }
+  100% { top: 0%; }
+}
+
+/* Category Progress Bars */
+.cat-progress-bg {
+  background-color: rgba(15, 23, 42, 0.04);
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 5px;
+}
+
+.cat-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+/* Category Progress Colors */
+.color-stay { background-color: #3B82F6; } /* Cobalt stay */
+.color-food { background-color: var(--accent-terracotta); } /* Sunset Coral */
+.color-travel { background-color: var(--secondary-mustard); } /* Gold travel */
+.color-activities { background-color: var(--state-green); } /* Emerald activities */
+.color-drinks { background-color: #8B5CF6; } /* Purple drinks */
+.color-other { background-color: var(--text-muted); }

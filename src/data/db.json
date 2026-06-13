@@ -1,0 +1,68 @@
+{
+  "itinerary": [],
+  "expenses": [],
+  "payments": [],
+  "chat": [],
+  "packingList": [
+    {
+      "id": "pack_1",
+      "item": "Swimwear & Beach Clothes",
+      "checkedBy": [],
+      "category": "Clothing"
+    },
+    {
+      "id": "pack_2",
+      "item": "Sunscreen SPF 50+",
+      "checkedBy": [],
+      "category": "Essentials"
+    },
+    {
+      "id": "pack_3",
+      "item": "Waterproof Phone Pouch",
+      "checkedBy": [],
+      "category": "Essentials"
+    },
+    {
+      "id": "pack_4",
+      "item": "Cashew Feni / Cashew Nuts",
+      "checkedBy": [],
+      "category": "Fun"
+    },
+    {
+      "id": "pack_5",
+      "item": "Polarized Sunglasses",
+      "checkedBy": [],
+      "category": "Clothing"
+    },
+    {
+      "id": "pack_6",
+      "item": "First Aid & Paracetamol",
+      "checkedBy": [],
+      "category": "First-Aid"
+    },
+    {
+      "id": "pack_7",
+      "item": "Slippers & Sand Sandals",
+      "checkedBy": [],
+      "category": "Clothing"
+    },
+    {
+      "id": "pack_8",
+      "item": "Aadhaar Card & Driving License",
+      "checkedBy": [],
+      "category": "Essentials"
+    }
+  ],
+  "members": [
+    "Aarav",
+    "Ananya",
+    "Ishaan",
+    "Diya",
+    "Kabir",
+    "Meera",
+    "Rohan",
+    "Siddharth",
+    "Tanvi",
+    "Aditya"
+  ]
+}
