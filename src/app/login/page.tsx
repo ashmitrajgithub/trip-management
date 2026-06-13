@@ -6,8 +6,10 @@ import { ArrowLeft } from 'lucide-react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
+  const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [otp, setOtp] = useState('');
+  
   const [isSignUp, setIsSignUp] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -27,34 +29,66 @@ export default function LoginPage() {
     checkUser();
   }, []);
 
-  const handleSendOtp = async (e: React.FormEvent) => {
+  const handlePasswordAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     setMessage('');
 
+    const cleanEmail = email.toLowerCase().trim();
+
     try {
-      if (isSignUp && !displayName.trim()) {
-        throw new Error('Display Name is required for sign up.');
-      }
-
-      // Supabase OTP sign-in / signup trigger
-      const cleanEmail = email.toLowerCase().trim();
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: cleanEmail,
-        options: {
-          shouldCreateUser: true, // creates a user if they do not exist
-          emailRedirectTo: window.location.origin,
-          data: isSignUp ? { display_name: displayName.trim() } : undefined
+      if (isSignUp) {
+        if (!displayName.trim()) {
+          throw new Error('Display Name is required for sign up.');
         }
-      });
 
-      if (otpError) throw otpError;
+        // 1. Sign up with Email and Password
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: password,
+          options: {
+            data: {
+              display_name: displayName.trim()
+            }
+          }
+        });
 
-      setOtpSent(true);
-      setMessage(`A 6-digit confirmation code has been sent to ${cleanEmail}! Please check your inbox (and spam folder).`);
+        if (signUpError) throw signUpError;
+
+        if (data.user) {
+          // If Supabase has email confirmation enabled, it sends a verification code.
+          // Switch to OTP Verification screen
+          setOtpSent(true);
+          setMessage(`Signup successful! A 6-digit verification code has been sent to ${cleanEmail}. Please enter it below to confirm your account.`);
+        }
+      } else {
+        // 2. Sign in with Email and Password
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: password
+        });
+
+        if (signInError) {
+          // If user email is not verified/confirmed yet, show OTP verification screen
+          if (signInError.message.toLowerCase().includes('confirm') || signInError.message.toLowerCase().includes('verified') || signInError.message.toLowerCase().includes('not confirmed')) {
+            // Re-trigger OTP code delivery
+            await supabase.auth.signInWithOtp({ email: cleanEmail });
+            setOtpSent(true);
+            setMessage('Your email is registered but not confirmed. A 6-digit verification code has been sent to your email.');
+            return;
+          }
+          throw signInError;
+        }
+
+        if (data.user) {
+          // Success login, check admin promotion
+          await handleProfileSetup(data.user, cleanEmail);
+          window.location.href = '/';
+        }
+      }
     } catch (err: any) {
-      setError(err.message || 'Failed to send verification code. Please check your email format.');
+      setError(err.message || 'An error occurred during authentication.');
     } finally {
       setLoading(false);
     }
@@ -66,58 +100,61 @@ export default function LoginPage() {
     setError('');
     setMessage('');
 
+    const cleanEmail = email.toLowerCase().trim();
+
     try {
-      const cleanEmail = email.toLowerCase().trim();
       const { data, error: verifyError } = await supabase.auth.verifyOtp({
         email: cleanEmail,
         token: otp.trim(),
-        type: 'email'
+        type: 'signup' // confirm email signup code
       });
 
       if (verifyError) throw verifyError;
 
       if (data.user) {
-        // Automatic Admin Check for the user's specific email address
-        const isAdminEmail = cleanEmail === 'trivediashmit3@gmail.com' || cleanEmail === 'trivediashmit3@gmailcom';
-        
-        // Check if profile exists
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('id', data.user.id)
-          .single();
-
-        const name = isSignUp ? displayName.trim() : (data.user.user_metadata?.display_name || cleanEmail.split('@')[0]);
-
-        if (!profile) {
-          // Create user profile
-          const { error: insertError } = await supabase
-            .from('profiles')
-            .insert([{
-              id: data.user.id,
-              display_name: name,
-              email: cleanEmail,
-              is_admin: isAdminEmail
-            }]);
-          
-          if (insertError) {
-            console.error("Profile creation error:", insertError);
-          }
-        } else if (isAdminEmail) {
-          // If the profile already exists, ensure it has the admin flag enabled
-          await supabase
-            .from('profiles')
-            .update({ is_admin: true })
-            .eq('id', data.user.id);
-        }
-
-        setMessage('OTP Verified! Logging in...');
+        // Success verification, configure profile and admin role
+        await handleProfileSetup(data.user, cleanEmail);
+        setMessage('Account confirmed! Logging in...');
         window.location.href = '/';
       }
     } catch (err: any) {
       setError(err.message || 'Invalid verification code. Please check and try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Helper to construct member profiles and elevate admins
+  const handleProfileSetup = async (user: any, cleanEmail: string) => {
+    const isAdminEmail = cleanEmail === 'trivediashmit3@gmail.com' || cleanEmail === 'trivediashmit3@gmailcom';
+    const name = displayName.trim() || user.user_metadata?.display_name || cleanEmail.split('@')[0];
+
+    try {
+      // Check if profile exists
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', user.id)
+        .single();
+
+      if (!profile) {
+        await supabase
+          .from('profiles')
+          .insert([{
+            id: user.id,
+            display_name: name,
+            email: cleanEmail,
+            is_admin: isAdminEmail
+          }]);
+      } else if (isAdminEmail) {
+        // Keep it admin
+        await supabase
+          .from('profiles')
+          .update({ is_admin: true })
+          .eq('id', user.id);
+      }
+    } catch (err) {
+      console.error("Profile setup DB error:", err);
     }
   };
 
@@ -136,7 +173,7 @@ export default function LoginPage() {
             }}
             style={styles.backButton}
           >
-            <ArrowLeft size={16} /> <span>Change Email</span>
+            <ArrowLeft size={16} /> <span>Back to Form</span>
           </button>
         )}
 
@@ -145,7 +182,7 @@ export default function LoginPage() {
           <h1 style={styles.title}>Susegad Goa '26</h1>
           <p style={styles.subtitle}>
             {otpSent 
-              ? 'Enter the 6-digit OTP code sent to your email to confirm your identity' 
+              ? 'Enter the 6-digit OTP code sent to your email to verify your account' 
               : isSignUp 
                 ? 'Create your profile to join the group planner' 
                 : 'Sign in to access itinerary, expenses & chat'}
@@ -156,8 +193,8 @@ export default function LoginPage() {
         {message && <div style={styles.successAlert}>{message}</div>}
 
         {!otpSent ? (
-          /* STEP 1: Enter Email / Name to request OTP */
-          <form onSubmit={handleSendOtp} style={styles.form}>
+          /* STEP 1: Email/Password inputs */
+          <form onSubmit={handlePasswordAuth} style={styles.form}>
             {isSignUp && (
               <div className="input-group">
                 <label className="input-label">Display Name</label>
@@ -177,19 +214,31 @@ export default function LoginPage() {
               <input
                 type="email"
                 className="input-field"
-                placeholder="trivediashmit3@gmail.com"
+                placeholder="name@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
             </div>
 
+            <div className="input-group">
+              <label className="input-label">Password</label>
+              <input
+                type="password"
+                className="input-field"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+
             <button type="submit" className="btn-primary" style={styles.submitBtn} disabled={loading}>
-              {loading ? 'Sending Code...' : 'Send Verification Code'}
+              {loading ? 'Processing...' : isSignUp ? 'Create Account' : 'Sign In'}
             </button>
           </form>
         ) : (
-          /* STEP 2: Enter OTP Code to verify */
+          /* STEP 2: OTP inputs */
           <form onSubmit={handleVerifyOtp} style={styles.form}>
             <div className="input-group">
               <label className="input-label">6-Digit Verification Code</label>
@@ -206,7 +255,7 @@ export default function LoginPage() {
             </div>
 
             <button type="submit" className="btn-primary" style={styles.submitBtn} disabled={loading}>
-              {loading ? 'Verifying...' : 'Confirm & Log In'}
+              {loading ? 'Verifying...' : 'Verify & Log In'}
             </button>
           </form>
         )}
