@@ -2,12 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/utils/supabase/client';
+import { ArrowLeft } from 'lucide-react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -25,62 +27,95 @@ export default function LoginPage() {
     checkUser();
   }, []);
 
-  const handleAuth = async (e: React.FormEvent) => {
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     setMessage('');
 
     try {
-      if (isSignUp) {
-        if (!displayName.trim()) {
-          throw new Error('Display Name is required');
+      if (isSignUp && !displayName.trim()) {
+        throw new Error('Display Name is required for sign up.');
+      }
+
+      // Supabase OTP sign-in / signup trigger
+      const cleanEmail = email.toLowerCase().trim();
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: cleanEmail,
+        options: {
+          shouldCreateUser: true, // creates a user if they do not exist
+          emailRedirectTo: window.location.origin,
+          data: isSignUp ? { display_name: displayName.trim() } : undefined
         }
+      });
 
-        const { data, error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              display_name: displayName.trim()
-            }
-          }
-        });
+      if (otpError) throw otpError;
 
-        if (signUpError) throw signUpError;
+      setOtpSent(true);
+      setMessage(`A 6-digit confirmation code has been sent to ${cleanEmail}! Please check your inbox (and spam folder).`);
+    } catch (err: any) {
+      setError(err.message || 'Failed to send verification code. Please check your email format.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        if (data.user) {
-          // Insert into public.profiles table
-          const { error: profileError } = await supabase
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const cleanEmail = email.toLowerCase().trim();
+      const { data, error: verifyError } = await supabase.auth.verifyOtp({
+        email: cleanEmail,
+        token: otp.trim(),
+        type: 'email'
+      });
+
+      if (verifyError) throw verifyError;
+
+      if (data.user) {
+        // Automatic Admin Check for the user's specific email address
+        const isAdminEmail = cleanEmail === 'trivediashmit3@gmail.com' || cleanEmail === 'trivediashmit3@gmailcom';
+        
+        // Check if profile exists
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', data.user.id)
+          .single();
+
+        const name = isSignUp ? displayName.trim() : (data.user.user_metadata?.display_name || cleanEmail.split('@')[0]);
+
+        if (!profile) {
+          // Create user profile
+          const { error: insertError } = await supabase
             .from('profiles')
             .insert([{
               id: data.user.id,
-              display_name: displayName.trim(),
-              email: email
+              display_name: name,
+              email: cleanEmail,
+              is_admin: isAdminEmail
             }]);
           
-          if (profileError) {
-            console.error("Profile insert error:", profileError);
+          if (insertError) {
+            console.error("Profile creation error:", insertError);
           }
-
-          setMessage('Sign up successful! Please log in.');
-          setIsSignUp(false);
+        } else if (isAdminEmail) {
+          // If the profile already exists, ensure it has the admin flag enabled
+          await supabase
+            .from('profiles')
+            .update({ is_admin: true })
+            .eq('id', data.user.id);
         }
-      } else {
-        const { data, error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password
-        });
 
-        if (signInError) throw signInError;
-
-        if (data.user) {
-          // Successful login, redirect
-          window.location.href = '/';
-        }
+        setMessage('OTP Verified! Logging in...');
+        window.location.href = '/';
       }
     } catch (err: any) {
-      setError(err.message || 'An error occurred during authentication');
+      setError(err.message || 'Invalid verification code. Please check and try again.');
     } finally {
       setLoading(false);
     }
@@ -89,77 +124,111 @@ export default function LoginPage() {
   return (
     <div style={styles.container}>
       <div className="glass-card" style={styles.box}>
+        
+        {otpSent && (
+          <button 
+            type="button" 
+            onClick={() => {
+              setOtpSent(false);
+              setOtp('');
+              setError('');
+              setMessage('');
+            }}
+            style={styles.backButton}
+          >
+            <ArrowLeft size={16} /> <span>Change Email</span>
+          </button>
+        )}
+
         <div style={styles.header}>
           <span style={styles.logoIcon}>🌴</span>
           <h1 style={styles.title}>Susegad Goa '26</h1>
           <p style={styles.subtitle}>
-            {isSignUp ? 'Create your profile to join the group planner' : 'Sign in to access itinerary, expenses & chat'}
+            {otpSent 
+              ? 'Enter the 6-digit OTP code sent to your email to confirm your identity' 
+              : isSignUp 
+                ? 'Create your profile to join the group planner' 
+                : 'Sign in to access itinerary, expenses & chat'}
           </p>
         </div>
 
         {error && <div style={styles.errorAlert}>{error}</div>}
         {message && <div style={styles.successAlert}>{message}</div>}
 
-        <form onSubmit={handleAuth} style={styles.form}>
-          {isSignUp && (
+        {!otpSent ? (
+          /* STEP 1: Enter Email / Name to request OTP */
+          <form onSubmit={handleSendOtp} style={styles.form}>
+            {isSignUp && (
+              <div className="input-group">
+                <label className="input-label">Display Name</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="e.g. Ashmit"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  required
+                />
+              </div>
+            )}
+
             <div className="input-group">
-              <label className="input-label">Display Name</label>
+              <label className="input-label">Email Address</label>
               <input
-                type="text"
+                type="email"
                 className="input-field"
-                placeholder="e.g. Ashmit"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="trivediashmit3@gmail.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
               />
             </div>
-          )}
 
-          <div className="input-group">
-            <label className="input-label">Email Address</label>
-            <input
-              type="email"
-              className="input-field"
-              placeholder="name@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
+            <button type="submit" className="btn-primary" style={styles.submitBtn} disabled={loading}>
+              {loading ? 'Sending Code...' : 'Send Verification Code'}
+            </button>
+          </form>
+        ) : (
+          /* STEP 2: Enter OTP Code to verify */
+          <form onSubmit={handleVerifyOtp} style={styles.form}>
+            <div className="input-group">
+              <label className="input-label">6-Digit Verification Code</label>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="123456"
+                maxLength={6}
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                required
+                style={{ textAlign: 'center', letterSpacing: '0.2em', fontSize: '18px', fontWeight: 'bold' }}
+              />
+            </div>
+
+            <button type="submit" className="btn-primary" style={styles.submitBtn} disabled={loading}>
+              {loading ? 'Verifying...' : 'Confirm & Log In'}
+            </button>
+          </form>
+        )}
+
+        {!otpSent && (
+          <div style={styles.switchRow}>
+            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+              {isSignUp ? 'Already have an account?' : "Don't have an account?"}
+            </span>
+            <button 
+              type="button" 
+              onClick={() => {
+                setIsSignUp(!isSignUp);
+                setError('');
+                setMessage('');
+              }}
+              style={styles.switchBtn}
+            >
+              {isSignUp ? 'Sign In' : 'Sign Up'}
+            </button>
           </div>
-
-          <div className="input-group">
-            <label className="input-label">Password</label>
-            <input
-              type="password"
-              className="input-field"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-
-          <button type="submit" className="btn-primary" style={styles.submitBtn} disabled={loading}>
-            {loading ? 'Processing...' : isSignUp ? 'Sign Up' : 'Sign In'}
-          </button>
-        </form>
-
-        <div style={styles.switchRow}>
-          <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-            {isSignUp ? 'Already have an account?' : "Don't have an account?"}
-          </span>
-          <button 
-            type="button" 
-            onClick={() => {
-              setIsSignUp(!isSignUp);
-              setError('');
-              setMessage('');
-            }}
-            style={styles.switchBtn}
-          >
-            {isSignUp ? 'Sign In' : 'Sign Up'}
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -182,10 +251,26 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1.5px solid var(--border-color)',
     backgroundColor: '#FFFFFF',
     boxShadow: 'var(--shadow-lg)',
+    position: 'relative',
+  },
+  backButton: {
+    position: 'absolute',
+    top: '16px',
+    left: '16px',
+    background: 'none',
+    border: 'none',
+    color: 'var(--text-muted)',
+    fontSize: '12px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '4px',
   },
   header: {
     textAlign: 'center',
     marginBottom: '24px',
+    marginTop: '12px',
   },
   logoIcon: {
     fontSize: '40px',
