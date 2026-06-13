@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 
 export const createClient = (cookieStore: Awaited<ReturnType<typeof cookies>>) => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   // Fail-safe: Return null instead of throwing if keys are not loaded yet
   if (!supabaseUrl || !supabaseKey) {
