@@ -57,8 +57,18 @@ export default function LoginPage() {
         if (signUpError) throw signUpError;
 
         if (data.user) {
-          // If Supabase has email confirmation enabled, it sends a verification code.
-          // Switch to OTP Verification screen
+          // If data.session exists, it means email confirmation is disabled in Supabase Settings.
+          // In this case, we bypass the OTP confirmation completely and log in instantly.
+          if (data.session) {
+            await handleProfileSetup(data.user, cleanEmail);
+            setMessage('Signup successful! Redirecting to dashboard...');
+            setTimeout(() => {
+              window.location.href = '/';
+            }, 1000);
+            return;
+          }
+
+          // Otherwise, confirmation is enabled. Switch to OTP Verification screen
           setOtpSent(true);
           setMessage(`Signup successful! A 6-digit verification code has been sent to ${cleanEmail}. Please enter it below to confirm your account.`);
         }
@@ -73,7 +83,14 @@ export default function LoginPage() {
           // If user email is not verified/confirmed yet, show OTP verification screen
           if (signInError.message.toLowerCase().includes('confirm') || signInError.message.toLowerCase().includes('verified') || signInError.message.toLowerCase().includes('not confirmed')) {
             // Re-trigger OTP code delivery
-            await supabase.auth.signInWithOtp({ email: cleanEmail });
+            const { error: otpError } = await supabase.auth.signInWithOtp({ email: cleanEmail });
+            if (otpError) {
+              // If OTP request is rate-limited, display rate limit warning but guide how to bypass it
+              if (otpError.message.toLowerCase().includes('rate limit')) {
+                throw new Error("Supabase email rate limit exceeded. Please ask your administrator to confirm this account in the Supabase Dashboard, or disable email confirmation.");
+              }
+              throw otpError;
+            }
             setOtpSent(true);
             setMessage('Your email is registered but not confirmed. A 6-digit verification code has been sent to your email.');
             return;
